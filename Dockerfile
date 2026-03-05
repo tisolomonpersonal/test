@@ -1,66 +1,36 @@
 # =========================
-# Zeabur-ready Dockerfile
+# Nanobot + Ollama Docker
 # =========================
 FROM python:3.11-slim
 
-LABEL language="python"
-
-# -------------------------
-# Install system dependencies
-# -------------------------
+# Install system tools
 RUN apt-get update && apt-get install -y \
-    bash \
     curl \
-    wget \
     git \
+    bash \
     supervisor \
-    ca-certificates \
-    zstd \
     && rm -rf /var/lib/apt/lists/*
 
-# -------------------------
 # Install Ollama
-# -------------------------
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# -------------------------
-# Set working directory
-# -------------------------
+# Create working directory
 WORKDIR /app
 
-# -------------------------
-# Environment variables
-# -------------------------
-ENV NANOBOT_DATA_DIR=/data/nanobot
-ENV OLLAMA_MODELS=/data/ollama
-ENV WEBUI_DATA_DIR=/data/webui
+# Clone nanobot repo
+RUN git clone https://github.com/HKUDS/nanobot.git
 
-# -------------------------
-# Create Python virtual environment
-# -------------------------
-RUN python -m venv /venv
+# Create virtual environment
+RUN python -m venv /nano_env
 
-# -------------------------
-# Install Python packages
-# -------------------------
-RUN /venv/bin/pip install --upgrade pip && \
-    /venv/bin/pip install --no-cache-dir nanobot-ai open-webui
+# Install Nanobot
+RUN /nano_env/bin/pip install --upgrade pip && \
+    /nano_env/bin/pip install nanobot-ai
 
-# -------------------------
-# Create persistent directories
-# -------------------------
-RUN mkdir -p \
-    /data/nanobot/workspace/memory \
-    /data/nanobot/workspace/sessions \
-    /data/nanobot/cron \
-    /data/ollama \
-    /data/webui \
-    /var/log/supervisor
+# Create nanobot config
+RUN mkdir -p /root/.nanobot
 
-# -------------------------
-# Nanobot config
-# -------------------------
-RUN cat > /data/nanobot/config.json << 'EOF'
+RUN cat <<EOF > /root/.nanobot/config.json
 {
   "providers": {
     "openai": {
@@ -76,60 +46,40 @@ RUN cat > /data/nanobot/config.json << 'EOF'
   "channels": {
     "telegram": {
       "enabled": true,
-      "token": "${TELEGRAM_BOT_TOKEN}",
+      "token": "8608913518:AAHCnEO8AFSU-CgSi6bML_TPASJmhXn8xWQ",
       "allowFrom": []
     }
   }
 }
 EOF
 
-# -------------------------
-# Supervisor configuration
-# -------------------------
-RUN cat > /etc/supervisor/conf.d/services.conf << 'EOF'
+# Supervisor config to run multiple services
+RUN mkdir -p /etc/supervisor/conf.d
+
+RUN cat <<EOF > /etc/supervisor/conf.d/services.conf
 [supervisord]
 nodaemon=true
 
 [program:ollama]
 command=/usr/local/bin/ollama serve
-environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
 autostart=true
 autorestart=true
-stdout_logfile=/var/log/supervisor/ollama.log
-stderr_logfile=/var/log/supervisor/ollama.err
 
-[program:nanobot-gateway]
-command=/venv/bin/nanobot gateway
-directory=/data/nanobot
+[program:nanobot_gateway]
+command=/nano_env/bin/nanobot gateway
+directory=/app/nanobot
 autostart=true
 autorestart=true
-stdout_logfile=/var/log/supervisor/gateway.log
-stderr_logfile=/var/log/supervisor/gateway.err
 
-[program:nanobot-agent]
-command=/venv/bin/nanobot agent
-directory=/data/nanobot
+[program:nanobot_agent]
+command=/nano_env/bin/nanobot agent
+directory=/app/nanobot
 autostart=true
 autorestart=true
-stdout_logfile=/var/log/supervisor/agent.log
-stderr_logfile=/var/log/supervisor/agent.err
-
-[program:webui]
-command=/venv/bin/open-webui serve --host 0.0.0.0 --port 8080
-directory=/data/webui
-autostart=true
-autorestart=true
-stdout_logfile=/var/log/supervisor/webui.log
-stderr_logfile=/var/log/supervisor/webui.err
 EOF
 
-# -------------------------
 # Expose ports
-# -------------------------
-EXPOSE 8080
 EXPOSE 11434
 
-# -------------------------
-# Start supervisor
-# -------------------------
+# Start everything
 CMD ["/usr/bin/supervisord"]
