@@ -31,28 +31,40 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 WORKDIR /root
 
 # -------------------------
+# Persistent environment variables
+# -------------------------
+ENV NANOBOT_DATA_DIR=/data/nanobot
+ENV OLLAMA_DATA_DIR=/data/ollama
+ENV WEBUI_DATA_DIR=/data/webui
+ENV DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nanobot
+
+# -------------------------
 # Create Python virtual environment
 # -------------------------
 RUN python3 -m venv nano_env
 
 # -------------------------
-# Install Python packages in venv
+# Install Python packages
 # -------------------------
-RUN /bin/bash -c "source nano_env/bin/activate && pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir nanobot-ai open-webui"
+RUN /bin/bash -c "source nano_env/bin/activate && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir nanobot-ai open-webui"
 
 # -------------------------
-# Create necessary directories
+# Create persistent data directories
 # -------------------------
-RUN mkdir -p /root/.nanobot/workspace/memory \
-    /root/.nanobot/workspace/sessions \
-    /root/.nanobot/cron \
-    /root/.ollama \
+RUN mkdir -p \
+    /data/nanobot/workspace/memory \
+    /data/nanobot/workspace/sessions \
+    /data/nanobot/cron \
+    /data/ollama \
+    /data/webui \
     /var/log/supervisor
 
 # -------------------------
 # Create Nanobot configuration
 # -------------------------
-RUN cat > /root/.nanobot/config.json << 'EOF'
+RUN cat > /data/nanobot/config.json << 'EOF'
 {
   "providers": {
     "openai": {
@@ -86,28 +98,29 @@ autorestart=true
 stderr_logfile=/var/log/supervisor/ollama.err.log
 stdout_logfile=/var/log/supervisor/ollama.out.log
 startsecs=5
-environment=OLLAMA_HOST=0.0.0.0:11434
+environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
 
 [program:nanobot-gateway]
 command=/root/nano_env/bin/nanobot gateway
+directory=/data/nanobot
 autostart=true
 autorestart=true
 stderr_logfile=/var/log/supervisor/gateway.err.log
 stdout_logfile=/var/log/supervisor/gateway.out.log
-directory=/root
 startsecs=10
 
 [program:nanobot-agent]
 command=/root/nano_env/bin/nanobot agent
+directory=/data/nanobot
 autostart=true
 autorestart=true
 stderr_logfile=/var/log/supervisor/agent.err.log
 stdout_logfile=/var/log/supervisor/agent.out.log
-directory=/root
 startsecs=15
 
 [program:webui]
 command=/root/nano_env/bin/open-webui serve --host 0.0.0.0 --port 8080
+directory=/data/webui
 autostart=true
 autorestart=true
 stderr_logfile=/var/log/supervisor/webui.err.log
