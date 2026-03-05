@@ -1,3 +1,4 @@
+
 # =========================
 # Zeabur-ready Dockerfile
 # =========================
@@ -23,7 +24,7 @@ RUN apt-get update && apt-get install -y \
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # -------------------------
-# Working directory
+# Set working directory
 # -------------------------
 WORKDIR /root
 
@@ -38,28 +39,28 @@ ENV DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nanobot
 # -------------------------
 # Create Python virtual environment
 # -------------------------
-RUN python -m venv nano_env
+RUN python3 -m venv nano_env
 
 # -------------------------
 # Install Python packages
 # -------------------------
 RUN /bin/bash -c "source nano_env/bin/activate && \
-pip install --no-cache-dir --upgrade pip && \
-pip install --no-cache-dir nanobot-ai open-webui"
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir nanobot-ai open-webui"
 
 # -------------------------
-# Create persistent directories
+# Create persistent data directories
 # -------------------------
 RUN mkdir -p \
-/data/nanobot/workspace/memory \
-/data/nanobot/workspace/sessions \
-/data/nanobot/cron \
-/data/ollama \
-/data/webui \
-/var/log/supervisor
+    /data/nanobot/workspace/memory \
+    /data/nanobot/workspace/sessions \
+    /data/nanobot/cron \
+    /data/ollama \
+    /data/webui \
+    /var/log/supervisor
 
 # -------------------------
-# Nanobot configuration
+# Create Nanobot configuration
 # -------------------------
 RUN cat > /data/nanobot/config.json << 'EOF'
 {
@@ -85,17 +86,17 @@ RUN cat > /data/nanobot/config.json << 'EOF'
 EOF
 
 # -------------------------
-# Supervisor configuration
+# Create Supervisor configuration
 # -------------------------
 RUN cat > /etc/supervisor/conf.d/services.conf << 'EOF'
 [program:ollama]
 command=/usr/local/bin/ollama serve
-environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
 autostart=true
 autorestart=true
 stderr_logfile=/var/log/supervisor/ollama.err.log
 stdout_logfile=/var/log/supervisor/ollama.out.log
 startsecs=5
+environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
 
 [program:nanobot-gateway]
 command=/root/nano_env/bin/nanobot gateway
