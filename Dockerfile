@@ -1,15 +1,15 @@
-
 # =========================
 # Zeabur-ready Dockerfile
 # =========================
 FROM python:3.11-slim
 
-LABEL "language"="python"
+LABEL language="python"
 
 # -------------------------
 # Install system dependencies
 # -------------------------
 RUN apt-get update && apt-get install -y \
+    bash \
     curl \
     wget \
     git \
@@ -26,30 +26,28 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 # -------------------------
 # Set working directory
 # -------------------------
-WORKDIR /root
+WORKDIR /app
 
 # -------------------------
-# Persistent environment variables
+# Environment variables
 # -------------------------
 ENV NANOBOT_DATA_DIR=/data/nanobot
-ENV OLLAMA_DATA_DIR=/data/ollama
+ENV OLLAMA_MODELS=/data/ollama
 ENV WEBUI_DATA_DIR=/data/webui
-ENV DATABASE_URL=postgresql://postgres:postgres@postgresql:5432/nanobot
 
 # -------------------------
 # Create Python virtual environment
 # -------------------------
-RUN python3 -m venv nano_env
+RUN python -m venv /venv
 
 # -------------------------
 # Install Python packages
 # -------------------------
-RUN /bin/bash -c "source nano_env/bin/activate && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir nanobot-ai open-webui"
+RUN /venv/bin/pip install --upgrade pip && \
+    /venv/bin/pip install --no-cache-dir nanobot-ai open-webui
 
 # -------------------------
-# Create persistent data directories
+# Create persistent directories
 # -------------------------
 RUN mkdir -p \
     /data/nanobot/workspace/memory \
@@ -60,7 +58,7 @@ RUN mkdir -p \
     /var/log/supervisor
 
 # -------------------------
-# Create Nanobot configuration
+# Nanobot config
 # -------------------------
 RUN cat > /data/nanobot/config.json << 'EOF'
 {
@@ -86,51 +84,52 @@ RUN cat > /data/nanobot/config.json << 'EOF'
 EOF
 
 # -------------------------
-# Create Supervisor configuration
+# Supervisor configuration
 # -------------------------
 RUN cat > /etc/supervisor/conf.d/services.conf << 'EOF'
+[supervisord]
+nodaemon=true
+
 [program:ollama]
 command=/usr/local/bin/ollama serve
+environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
 autostart=true
 autorestart=true
-stderr_logfile=/var/log/supervisor/ollama.err.log
-stdout_logfile=/var/log/supervisor/ollama.out.log
-startsecs=5
-environment=OLLAMA_HOST=0.0.0.0:11434,OLLAMA_MODELS=/data/ollama
+stdout_logfile=/var/log/supervisor/ollama.log
+stderr_logfile=/var/log/supervisor/ollama.err
 
 [program:nanobot-gateway]
-command=/root/nano_env/bin/nanobot gateway
+command=/venv/bin/nanobot gateway
 directory=/data/nanobot
 autostart=true
 autorestart=true
-stderr_logfile=/var/log/supervisor/gateway.err.log
-stdout_logfile=/var/log/supervisor/gateway.out.log
-startsecs=10
+stdout_logfile=/var/log/supervisor/gateway.log
+stderr_logfile=/var/log/supervisor/gateway.err
 
 [program:nanobot-agent]
-command=/root/nano_env/bin/nanobot agent
+command=/venv/bin/nanobot agent
 directory=/data/nanobot
 autostart=true
 autorestart=true
-stderr_logfile=/var/log/supervisor/agent.err.log
-stdout_logfile=/var/log/supervisor/agent.out.log
-startsecs=15
+stdout_logfile=/var/log/supervisor/agent.log
+stderr_logfile=/var/log/supervisor/agent.err
 
 [program:webui]
-command=/root/nano_env/bin/open-webui serve --host 0.0.0.0 --port 8080
+command=/venv/bin/open-webui serve --host 0.0.0.0 --port 8080
 directory=/data/webui
 autostart=true
 autorestart=true
-stderr_logfile=/var/log/supervisor/webui.err.log
-stdout_logfile=/var/log/supervisor/webui.out.log
+stdout_logfile=/var/log/supervisor/webui.log
+stderr_logfile=/var/log/supervisor/webui.err
 EOF
 
 # -------------------------
 # Expose ports
 # -------------------------
-EXPOSE 8080 11434
+EXPOSE 8080
+EXPOSE 11434
 
 # -------------------------
-# Start Supervisor
+# Start supervisor
 # -------------------------
-CMD ["/usr/bin/supervisord", "-n"]
+CMD ["/usr/bin/supervisord"]
